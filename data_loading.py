@@ -4,6 +4,22 @@ import csv
 
 
 def read_csvs():
+    """
+    FASTA格式与氨基酸的对应关系：
+    A  alanine               P  proline
+    B  aspartate/asparagine  Q  glutamine
+    C  cystine               R  arginine
+    D  aspartate             S  serine
+    E  glutamate             T  threonine
+    F  phenylalanine         U  selenocysteine
+    G  glycine               V  valine
+    H  histidine             W  tryptophan
+    I  isoleucine            Y  tyrosine
+    K  lysine                Z  glutamate/glutamine
+    L  leucine               X  any
+    M  methionine            *  translation stop
+    N  asparagine            -  gap of indeterminate length
+    """
     files = glob.glob('./ProTstab2EachSpeciesDatasets/*.csv')
     data = []
     for file in files:
