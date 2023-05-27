@@ -1,13 +1,3 @@
-'''
-Author: lin-yh20@mails.tsinghua.edu.cn
-Date: 2023-04-24
-LastEditTime: 2023-04-24
-LastEditors: Yuhuan Lin
-Description: Geometry Function for Protein
-FilePath: /model/Attention_Module.py
-'''
-
-
 import numpy as np
 import math
 
@@ -26,9 +16,9 @@ def translate(A,B):
 
 def rotation(A,B):
 
-    x = (A-B)[:,0:1]
-    y = (A-B)[:,1:2]
-    z = (A-B)[:,2:3]
+    x = (A-B)[:,0:1] + 0.0001
+    y = (A-B)[:,1:2] + 0.0001
+    z = (A-B)[:,2:3] + 0.0001
 
     alpha = np.arctan(y/x)
     beta = np.arctan(z/x)
