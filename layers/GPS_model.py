@@ -1,12 +1,16 @@
 import torch
+import torch.nn as nn
 import torch_geometric.graphgym.register as register
 from torch_geometric.graphgym.config import cfg
 from torch_geometric.graphgym.models.gnn import GNNPreMP
 from torch_geometric.graphgym.models.layer import (new_layer_config,
                                                    BatchNorm1dNode)
 from torch_geometric.graphgym.register import register_network
+from torch_geometric.graphgym.register import register_head
+from torch_geometric.nn.glob import global_add_pool, global_mean_pool, global_max_pool
 
-from graphgps.layer.gps_layer import GPSLayer
+from layer.GPS_layer import GPSLayer
+from encoder.Encoder import Amino_Acid, Atom_encoder, Bond_encoder
 
 
 class FeatureEncoder(torch.nn.Module):
@@ -51,56 +55,135 @@ class FeatureEncoder(torch.nn.Module):
         return batch
 
 
+# @register_network('GPSModel')
+# class GPSModel(torch.nn.Module):
+#     """Multi-scale graph x-former.
+#     """
+#
+#     def __init__(self, dim_in, dim_out):
+#         super().__init__()
+#         self.encoder = FeatureEncoder(dim_in)
+#         dim_in = self.encoder.dim_in
+#
+#         if cfg.gnn.layers_pre_mp > 0:
+#             self.pre_mp = GNNPreMP(
+#                 dim_in, cfg.gnn.dim_inner, cfg.gnn.layers_pre_mp)
+#             dim_in = cfg.gnn.dim_inner
+#
+#         assert cfg.gt.dim_hidden == cfg.gnn.dim_inner == dim_in, \
+#             "The inner and hidden dims must match."
+#
+#         try:
+#             local_gnn_type, global_model_type = cfg.gt.layer_type.split('+')
+#         except:
+#             raise ValueError(f"Unexpected layer type: {cfg.gt.layer_type}")
+#         layers = []
+#         for _ in range(cfg.gt.layers):
+#             layers.append(GPSLayer(
+#                 dim_h=cfg.gt.dim_hidden,
+#                 local_gnn_type=local_gnn_type,
+#                 global_model_type=global_model_type,
+#                 num_heads=cfg.gt.n_heads,
+#                 act=cfg.gnn.act,
+#                 pna_degrees=cfg.gt.pna_degrees,
+#                 equivstable_pe=cfg.posenc_EquivStableLapPE.enable,
+#                 dropout=cfg.gt.dropout,
+#                 attn_dropout=cfg.gt.attn_dropout,
+#                 layer_norm=cfg.gt.layer_norm,
+#                 batch_norm=cfg.gt.batch_norm,
+#                 bigbird_cfg=cfg.gt.bigbird,
+#                 log_attn_weights=cfg.train.mode == 'log-attn-weights'
+#             ))
+#         self.layers = torch.nn.Sequential(*layers)
+#
+#         GNNHead = register.head_dict[cfg.gnn.head]
+#         self.post_mp = GNNHead(dim_in=cfg.gnn.dim_inner, dim_out=dim_out)
+#
+#     def forward(self, batch):
+#         for module in self.children():
+#             batch = module(batch)
+#         return batch
+
+
 @register_network('GPSModel')
 class GPSModel(torch.nn.Module):
     """Multi-scale graph x-former.
     """
 
-    def __init__(self, dim_in, dim_out):
+    def __init__(self, hid_dim, out_dim, num_layers, num_layers_regression, global_pool,
+                 local_gnn_type, global_model_type, num_heads, act='relu',
+                 pna_degrees=None, equivstable_pe=False, dropout=0.0,
+                 attn_dropout=0.0, layer_norm=False, batch_norm=True,
+                 bigbird_cfg=None, log_attn_weights=False, max_length=512):
         super().__init__()
-        self.encoder = FeatureEncoder(dim_in)
-        dim_in = self.encoder.dim_in
+        self.acid_encoder = Amino_Acid(hid_dim)
+        self.bond_encoder = Bond_encoder(hid_dim)
 
-        if cfg.gnn.layers_pre_mp > 0:
-            self.pre_mp = GNNPreMP(
-                dim_in, cfg.gnn.dim_inner, cfg.gnn.layers_pre_mp)
-            dim_in = cfg.gnn.dim_inner
-
-        assert cfg.gt.dim_hidden == cfg.gnn.dim_inner == dim_in, \
-            "The inner and hidden dims must match."
-
-        try:
-            local_gnn_type, global_model_type = cfg.gt.layer_type.split('+')
-        except:
-            raise ValueError(f"Unexpected layer type: {cfg.gt.layer_type}")
         layers = []
-        for _ in range(cfg.gt.layers):
+        for _ in range(num_layers):
             layers.append(GPSLayer(
-                dim_h=cfg.gt.dim_hidden,
+                dim_h=hid_dim,
                 local_gnn_type=local_gnn_type,
                 global_model_type=global_model_type,
-                num_heads=cfg.gt.n_heads,
-                act=cfg.gnn.act,
-                pna_degrees=cfg.gt.pna_degrees,
-                equivstable_pe=cfg.posenc_EquivStableLapPE.enable,
-                dropout=cfg.gt.dropout,
-                attn_dropout=cfg.gt.attn_dropout,
-                layer_norm=cfg.gt.layer_norm,
-                batch_norm=cfg.gt.batch_norm,
-                bigbird_cfg=cfg.gt.bigbird,
-                log_attn_weights=cfg.train.mode == 'log-attn-weights',
-                num_layer_MPNN=cfg.gnn.num_layer_MPNN,
-                similarity_type=cfg.gnn.similarity_type,
-                inference_mode=cfg.gnn.inference_mode,
-                mp_threshold=cfg.gnn.mp_threshold,
-                force_undirected=cfg.gnn.force_undirected
+                num_heads=num_heads,
+                act=act,
+                pna_degrees=pna_degrees,
+                equivstable_pe=equivstable_pe,
+                dropout=dropout,
+                attn_dropout=attn_dropout,
+                layer_norm=layer_norm,
+                batch_norm=batch_norm,
+                bigbird_cfg=bigbird_cfg,
+                log_attn_weights=log_attn_weights,
+                max_length=max_length if _ == 0 else None
             ))
         self.layers = torch.nn.Sequential(*layers)
 
-        GNNHead = register.head_dict[cfg.gnn.head]
-        self.post_mp = GNNHead(dim_in=cfg.gnn.dim_inner, dim_out=dim_out)
+        self.post_mp = SANGraphHead(dim_in=hid_dim, dim_out=out_dim, L=num_layers_regression, global_pool=global_pool)
 
     def forward(self, batch):
         for module in self.children():
             batch = module(batch)
         return batch
+
+
+@register_head('san_graph')
+class SANGraphHead(nn.Module):
+    """
+    SAN prediction head for graph prediction tasks.
+
+    Args:
+        dim_in (int): Input dimension.
+        dim_out (int): Output dimension. For binary prediction, dim_out=1.
+        L (int): Number of hidden layers.
+    """
+
+    def __init__(self, dim_in, dim_out, L=2, global_pool='add'):
+        super().__init__()
+        # self.pooling_fun = register.pooling_dict[cfg.model.graph_pooling]
+        assert global_pool in ['add', 'mean', 'max']
+        self.pooling_fun = eval("global_" + global_pool + "_pool")
+        list_FC_layers = [
+            nn.Linear(dim_in // 2 ** l, dim_in // 2 ** (l + 1), bias=True)
+            for l in range(L)]
+        list_FC_layers.append(
+            nn.Linear(dim_in // 2 ** L, dim_out, bias=True))
+        self.FC_layers = nn.ModuleList(list_FC_layers)
+        self.L = L
+        self.activation = nn.ReLU(inplace=True)
+
+    def _apply_index(self, batch):
+        return batch.graph_feature, batch.y
+
+    def forward(self, batch):
+        graph_emb = self.pooling_fun(batch.x, batch.batch)
+        for l in range(self.L):
+            graph_emb = self.FC_layers[l](graph_emb)
+            graph_emb = self.activation(graph_emb)
+        graph_emb = self.FC_layers[self.L](graph_emb)
+        batch.graph_feature = graph_emb
+        pred, label = self._apply_index(batch)
+        return pred, label
+
+
+

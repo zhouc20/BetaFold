@@ -8,10 +8,11 @@ from torch_geometric.data import Batch
 from torch_geometric.nn import Linear as Linear_pyg
 from torch_geometric.utils import to_dense_batch
 
-from graphgps.layer.bigbird_layer import SingleBigBirdLayer
-from graphgps.layer.gatedgcn_layer import GatedGCNLayer
-from graphgps.layer.gine_conv_layer import GINEConvESLapPE
-from graphgps.layer.rwgnn_layer import RW_MPNN_layer, RW_Transformer_layer
+from layer.bigbird_layer import SingleBigBirdLayer
+from layer.gatedgcn_layer import GatedGCNLayer
+from layer.gine_conv_layer import GINEConvESLapPE
+from layer.Transformer import PositionalEncoding
+
 
 
 class GPSLayer(nn.Module):
@@ -22,9 +23,7 @@ class GPSLayer(nn.Module):
                  local_gnn_type, global_model_type, num_heads, act='relu',
                  pna_degrees=None, equivstable_pe=False, dropout=0.0,
                  attn_dropout=0.0, layer_norm=False, batch_norm=True,
-                 bigbird_cfg=None, log_attn_weights=False, num_layer_MPNN=1, similarity_type='cos',
-                 inference_mode='original', mp_threshold=0.0, force_undirected=False, complex_type='original',
-                 complex_pool_type='add', cluster_threshold=0.1, complex_max_distance=5):
+                 bigbird_cfg=None, log_attn_weights=False, max_length=None):
         super().__init__()
 
         self.dim_h = dim_h
@@ -33,8 +32,8 @@ class GPSLayer(nn.Module):
         self.layer_norm = layer_norm
         self.batch_norm = batch_norm
         self.equivstable_pe = equivstable_pe
-        self.activation = register.act_dict[act]
-        self.num_layer_MPNN = num_layer_MPNN
+        if act == 'relu':
+            self.activation = nn.ReLU(inplace=True)
 
         self.log_attn_weights = log_attn_weights
         if log_attn_weights and global_model_type != 'Transformer':
@@ -50,7 +49,7 @@ class GPSLayer(nn.Module):
             self.local_model = pygnn.GENConv(dim_h, dim_h)
         elif local_gnn_type == 'GINE':
             gin_nn = nn.Sequential(Linear_pyg(dim_h, dim_h),
-                                   self.activation(),
+                                   self.activation,
                                    Linear_pyg(dim_h, dim_h))
             if self.equivstable_pe:  # Use specialised GINE layer for EquivStableLapPE.
                 self.local_model = GINEConvESLapPE(gin_nn)
@@ -83,25 +82,17 @@ class GPSLayer(nn.Module):
                                              residual=True,
                                              act=act,
                                              equivstable_pe=equivstable_pe)
-        elif local_gnn_type == 'GINE_RW':
-            gin_nn = nn.ModuleList([nn.Sequential(Linear_pyg(dim_h, dim_h),
-                                   self.activation(),
-                                   Linear_pyg(dim_h, dim_h)) for _ in range(num_layer_MPNN)])
-            self.local_model = RW_MPNN_layer(gin_nn, num_layer_MPNN, similarity_type, inference_mode, mp_threshold, force_undirected)
-
         else:
             raise ValueError(f"Unsupported local GNN model: {local_gnn_type}")
         self.local_gnn_type = local_gnn_type
 
+        self.max_length = max_length
+        if max_length is not None:
+            self.pe = PositionalEncoding(dim_h, max_length)
+
         # Global attention transformer-style model.
         if global_model_type == 'None':
             self.self_attn = None
-        elif global_model_type == 'GINE_RW':
-            gin_nn = nn.ModuleList([nn.Sequential(Linear_pyg(dim_h, dim_h),
-                                   self.activation(),
-                                   Linear_pyg(dim_h, dim_h)) for _ in range(num_layer_MPNN)])
-            self.self_attn = RW_MPNN_layer(gin_nn, num_layer_MPNN, similarity_type, inference_mode, mp_threshold, force_undirected)
-
         elif global_model_type == 'Transformer':
             self.self_attn = torch.nn.MultiheadAttention(
                 dim_h, num_heads, dropout=self.attn_dropout, batch_first=True)
@@ -109,10 +100,7 @@ class GPSLayer(nn.Module):
             #     d_model=dim_h, nhead=num_heads,
             #     dim_feedforward=2048, dropout=0.1, activation=F.relu,
             #     layer_norm_eps=1e-5, batch_first=True)
-        elif global_model_type == 'RW_Transformer':
-            self.self_attn = RW_Transformer_layer(dim_h, num_heads, self.attn_dropout, complex_type,
-                                                  similarity_type, complex_pool_type, force_undirected,
-                                                  cluster_threshold, complex_max_distance)
+
         elif global_model_type == 'Performer':
             self.self_attn = SelfAttention(
                 dim=dim_h, heads=num_heads,
@@ -147,7 +135,7 @@ class GPSLayer(nn.Module):
         # Feed Forward block.
         self.ff_linear1 = nn.Linear(dim_h, dim_h * 2)
         self.ff_linear2 = nn.Linear(dim_h * 2, dim_h)
-        self.act_fn_ff = self.activation()
+        self.act_fn_ff = self.activation
         if self.layer_norm:
             self.norm2 = pygnn.norm.LayerNorm(dim_h)
             # self.norm2 = pygnn.norm.GraphNorm(dim_h)
@@ -177,10 +165,6 @@ class GPSLayer(nn.Module):
                 # GatedGCN does residual connection and dropout internally.
                 h_local = local_out.x
                 batch.edge_attr = local_out.edge_attr
-            elif self.local_gnn_type == 'GINE_RW':
-                h_local = self.local_model(h, batch.edge_index, batch.edge_attr, batch.batch)
-                h_local = self.dropout_local(h_local)
-                h_local = h_in1 + h_local
 
             else:
                 if self.equivstable_pe:
@@ -200,10 +184,10 @@ class GPSLayer(nn.Module):
         # Multi-head attention.
         if self.self_attn is not None:
             h_dense, mask = to_dense_batch(h, batch.batch)
+            if self.max_length is not None:
+                h_dense = self.pe(h_dense)
             if self.global_model_type == 'Transformer':
                 h_attn = self._sa_block(h_dense, None, ~mask)[mask]
-            elif self.global_model_type == 'GINE_RW':
-                h_attn = self.self_attn(h, batch.edge_index, batch.edge_attr, batch.batch)
             elif self.global_model_type == 'Performer':
                 h_attn = self.self_attn(h_dense, mask=mask)[mask]
             elif self.global_model_type == 'BigBird':

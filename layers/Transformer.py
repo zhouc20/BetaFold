@@ -11,7 +11,7 @@ FilePath: /model/Transformer.py
 import math
 import torch.nn as nn
 from networkTool import *
-from Attention_Module import *
+from layer.Attention_Module import *
 
 class TransformerModel(nn.Module):
 
@@ -62,6 +62,20 @@ class TransformerModel(nn.Module):
         output = self.transformer_encoder(src)
         output = self.decoder1(self.act(self.decoder0(output)))
 
-
-
         return output
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, hid_dim, max_len=1024):
+        super(PositionalEncoding, self).__init__()
+        pe = torch.zeros(max_len, hid_dim)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, hid_dim, 2).float() * (-math.log(10000.0) / hid_dim))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        # pe = pe.unsqueeze(0).transpose(0, 1)
+        # pe.requires_grad = False
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        return x + self.pe[:x.size(1), :].unsqueeze(0).repeat(x.shape[0], 1, 1)
