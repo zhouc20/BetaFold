@@ -8,8 +8,9 @@ class Amino_Acid(nn.Module):
 
         self.encoder = nn.Embedding(28, hid_dim)
 
-    def forward(self, x):
-        return self.encoder(x)
+    def forward(self, batch):
+        batch.x = self.encoder(batch.x)
+        return batch
 
 
 class Atom_encoder(nn.Module):
@@ -19,8 +20,9 @@ class Atom_encoder(nn.Module):
 
         self.encoder = nn.Embedding(100, hid_dim)
 
-    def forward(self, x):
-        return self.encoder(x)
+    def forward(self, batch):
+        batch.atom = self.encoder(batch.x)
+        return batch
 
 
 class Bond_encoder(nn.Module):
@@ -29,5 +31,6 @@ class Bond_encoder(nn.Module):
 
         self.encoder = nn.Embedding(100, hid_dim)
 
-    def forward(self, x):
-        return self.encoder(x)
+    def forward(self, batch):
+        batch.edge_attr = self.encoder(batch.edge_attr)
+        return batch
