@@ -1,36 +1,27 @@
-# /表示当前所在的目录
+# 忽略特定目录
+# /A
+# 忽略所有同名目录
+# A
+# 不忽略特定目录
+# !/A/B
 
-# 忽略public下的所有目录及文件
-# /public/*
-
-#不忽略/public/assets，就是特例的意思，assets文件不忽略
-# !/public/assets
-
-# 忽略具体的文件
-# index.php
-
-# 忽略所有的php文件
-# *.php
-
-# 忽略a.php和b.php
-# [ab].php
-
-# 忽略所有名为A的文件夹中的所有内容
-# A/*
+# 忽略特定文件
+# /A/a.txt
+# 忽略所有同名文件
+# a.txt
 
 # 匹配规则和linux文件匹配一样
-# 以斜杠 / 开头表示目录；
-# 以星号 * 通配多个字符；
-# 以问号 ? 通配单个字符
-# 以方括号 [] 包含单个字符的匹配列表；
-# 以叹号 ! 表示不忽略(跟踪)匹配到的文件或目录；
+# 斜杠 / 开头表示目录
+# 星号 * 通配多个字符
+# 问号 ? 通配单个字符
+# 方括号 [] 包含单个字符的匹配列表
+# 叹号 ! 表示不忽略匹配到的文件或目录
 
-# 排除__pycache__
-__pycache__/*
+# 中间编译文件
+__pycache__
 
-# 排除Pycharm配置
-/.idea/*
+# Pycharm配置
+/.idea
 
-# 排除数据集
-/ProTstab2EachSpeciesDatasets/*
-/StructuredDatasets/*
+# 过大的数据集
+/StructuredDatasets
