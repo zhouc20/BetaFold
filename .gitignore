@@ -24,4 +24,4 @@ __pycache__
 /.idea
 
 # 过大的数据集
-/StructuredDatasets
+/StructuredDatasets/*.json
