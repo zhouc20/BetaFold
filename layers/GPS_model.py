@@ -110,7 +110,7 @@ class GPSModel(torch.nn.Module):
     """Multi-scale graph x-former.
     """
 
-    def __init__(self, hid_dim, out_dim, num_layers, num_layers_regression, global_pool,
+    def __init__(self, hid_dim, out_dim, num_layers, num_layers_regression, num_layers_cls, global_pool,
                  local_gnn_type, global_model_type, num_heads, act='relu',
                  pna_degrees=None, equivstable_pe=False, dropout=0.0,
                  attn_dropout=0.0, layer_norm=False, batch_norm=True,
@@ -139,11 +139,34 @@ class GPSModel(torch.nn.Module):
             ))
         self.layers = torch.nn.Sequential(*layers)
 
+        self.cls = ClassifierHead(dim_in=hid_dim, dim_out=26, L=num_layers_cls)
         self.post_mp = SANGraphHead(dim_in=hid_dim, dim_out=out_dim, L=num_layers_regression, global_pool=global_pool)
 
     def forward(self, batch):
         for module in self.children():
             batch = module(batch)
+        return batch
+
+
+class ClassifierHead(nn.Module):
+    def __init__(self, dim_in, dim_out=26, L=0):
+        super(ClassifierHead, self).__init__()
+        list_FC_layers = [
+            nn.Linear(dim_in // 2 ** l, dim_in // 2 ** (l + 1), bias=True)
+            for l in range(L)]
+        list_FC_layers.append(
+            nn.Linear(dim_in // 2 ** L, dim_out, bias=True))
+        self.FC_layers = nn.ModuleList(list_FC_layers)
+        self.L = L
+        self.activation = nn.ReLU(inplace=True)
+
+    def forward(self, batch):
+        graph_emb = batch.x
+        for l in range(self.L):
+            graph_emb = self.FC_layers[l](graph_emb)
+            graph_emb = self.activation(graph_emb)
+        logits = self.FC_layers[self.L](graph_emb)
+        batch.logits = logits
         return batch
 
 
@@ -173,7 +196,7 @@ class SANGraphHead(nn.Module):
         self.activation = nn.ReLU(inplace=True)
 
     def _apply_index(self, batch):
-        return batch.graph_feature, batch.y
+        return batch.graph_feature, batch.y, batch.logits
 
     def forward(self, batch):
         graph_emb = self.pooling_fun(batch.x, batch.batch)
@@ -182,8 +205,8 @@ class SANGraphHead(nn.Module):
             graph_emb = self.activation(graph_emb)
         graph_emb = self.FC_layers[self.L](graph_emb)
         batch.graph_feature = graph_emb
-        pred, label = self._apply_index(batch)
-        return pred, label
+        pred, label, logits = self._apply_index(batch)
+        return pred, label, logits
 
 
 
