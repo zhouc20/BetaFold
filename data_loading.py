@@ -7,7 +7,7 @@ import numpy as np
 
 def read_csvs(data_filter=lambda _: True):
     """
-    FASTA格式与氨基酸的对应关系：
+    FASTA格式与氨基酸的对应关系:
     A  alanine               P  proline
     B  aspartate/asparagine  Q  glutamine
     C  cystine               R  arginine
@@ -22,7 +22,7 @@ def read_csvs(data_filter=lambda _: True):
     M  methionine            *  translation stop
     N  asparagine            -  gap of indeterminate length
     """
-    files = glob.glob('./ProTstab2EachSpeciesDatasets/*.csv')
+    files = glob.glob('./ProTstab2_dataset_new/*.csv')
     csvs_data = {}
     for file in files:
         csv_data = []
