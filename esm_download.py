@@ -32,8 +32,8 @@ for csv_name, csv_data in csvs_data.items():
                 # 可能会返回'INTERNAL SERVER ERROR'
                 if result[:6] == 'HEADER':
                     break
-                elif result == 'INTERNAL SERVER ERROR':
-                    print(f'{protein_id}, INTERNAL SERVER ERROR')
+                else:
+                    print(f'{protein_id}, error, retry')
                 time.sleep(1)
             cut_idx = result.find('ATOM      1')
             result = result[cut_idx:]
@@ -69,7 +69,7 @@ for csv_name, csv_data in csvs_data.items():
                                       'species': species,
                                       'Tm': Tm,
                                       'structure': structure}
+            print(f'{protein_id}, success')
             pbar.update(1)
-    print(protein_id)
     with open(f'{csv_name}.json', 'w') as json_file:
         json.dump(extra_data, json_file)
