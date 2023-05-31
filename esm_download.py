@@ -34,6 +34,7 @@ for csv_name, csv_data in csvs_data.items():
                     break
                 else:
                     print(f'{protein_id}, error, retry')
+                    print(f'{result}')
                 time.sleep(1)
             cut_idx = result.find('ATOM      1')
             result = result[cut_idx:]
