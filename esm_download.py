@@ -14,9 +14,9 @@ headers = {
     'content-type': 'text/plain'}
 
 csvs_data = read_csvs(data_filter=lambda x: len(x[2]) <= 400)
-for key, csv_data in csvs_data.items():
+for csv_name, csv_data in csvs_data.items():
     extra_data = {}
-    with tqdm(desc=f'downloading {key}', total=len(csv_data), unit='proteins') as pbar:
+    with tqdm(desc=f'downloading {csv_name}', total=len(csv_data), unit='proteins') as pbar:
         for i in range(len(csv_data)):
             protein_id = csv_data[i, 1]
             simple_fasta = csv_data[i, 2]
@@ -25,6 +25,7 @@ for key, csv_data in csvs_data.items():
                 continue
             species = csv_data[i, 3]
             Tm = csv_data[i, 4]
+
             while True:
                 result = requests.post(url, data=simple_fasta, headers=headers)
                 result = result.text
@@ -35,8 +36,8 @@ for key, csv_data in csvs_data.items():
                     print(f'{protein_id}, INTERNAL SERVER ERROR')
                 time.sleep(1)
             cut_idx = result.find('ATOM      1')
-            assert cut_idx == 1501
             result = result[cut_idx:]
+
             structure = {'atom_name': [],
                          'residue_name': [],
                          'chain_id': [],
@@ -48,6 +49,7 @@ for key, csv_data in csvs_data.items():
                          'temperature_factor': [],
                          'chemical_symbol': []}
             for j, line in enumerate(result.split('\n')):
+                line = line.replace('-', ' -')
                 parts = line.split(' ')
                 parts = list(filter(lambda x: x != '', parts))
                 assert parts[0] == 'ATOM'
@@ -62,10 +64,12 @@ for key, csv_data in csvs_data.items():
                 structure['occupancy'].append(float(parts[9]))
                 structure['temperature_factor'].append(float(parts[10]))
                 structure['chemical_symbol'].append(parts[11])
+
             extra_data[protein_id] = {'simple_fasta': simple_fasta,
                                       'species': species,
                                       'Tm': Tm,
                                       'structure': structure}
             pbar.update(1)
-    with open(f'{key}.json', 'w') as json_file:
+    print(protein_id)
+    with open(f'{csv_name}.json', 'w') as json_file:
         json.dump(extra_data, json_file)
