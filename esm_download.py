@@ -37,16 +37,18 @@ try:
                 if protein_id in extra_data.keys():
                     continue
 
+                wait = 0.5
                 while True:
                     result = requests.post(url, data=simple_fasta, headers=headers)
                     result = result.text
                     # 可能会返回'INTERNAL SERVER ERROR'或者'forbidden'
                     if result[:6] == 'HEADER':
                         pbar.set_postfix({'protein_id': protein_id, 'state': 'success'})
-                        time.sleep(0.5)
+                        time.sleep(0.1)
                         break
                     else:
-                        time.sleep(1.5)
+                        wait = wait * 1.2 if wait * 1.2 <= 10 else wait
+                        time.sleep(wait)
                         pbar.set_postfix({'protein_id': protein_id, 'state': result})
                 cut_idx = result.find('ATOM      1')
                 result = result[cut_idx:]
