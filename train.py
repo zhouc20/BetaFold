@@ -37,7 +37,7 @@ sys.stdout = Unbuffered(sys.stdout)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--task", type=str, default="thermal_stability")
-parser.add_argument("--dataset", type=str, default="ProTstab")
+parser.add_argument("--dataset", type=str, default="ProTstab2_new")
 parser.add_argument('--model', type=str, default='Transformer')
 parser.add_argument('--batch_size', type=int, default=256)
 parser.add_argument('--epochs', type=int, default=100,
@@ -56,6 +56,7 @@ parser.add_argument('--num_layers', type=int, default=1)
 parser.add_argument('--num_layers_MPNN', type=int, default=1)
 parser.add_argument('--num_layers_Transformer', type=int, default=0)
 parser.add_argument('--num_layers_regression', type=int, default=2)
+parser.add_argument('--num_layers_cls', type=int, default=0)
 parser.add_argument('--rw_steps', type=int, default=20)
 parser.add_argument('--pe_dim', type=int, default=16)
 parser.add_argument('--se_type', type=str, default='linear')
@@ -76,6 +77,7 @@ parser.add_argument('--layer_norm', action='store_true', default=False)
 parser.add_argument('--bigbird_cfg', default=None)
 parser.add_argument('--log_attn_weights', action='store_true', default=False)
 parser.add_argument('--max_length', type=int, default=512)
+parser.add_argument('--mask_prob', type=float, default=0.0)
 parser.add_argument('--num_tasks', type=int, default=1)
 parser.add_argument('--no', type=int, default=0)
 parser.add_argument('--name', type=str, default='')
@@ -124,30 +126,28 @@ processed_path = f"data/{args.dataset}"
 if os.path.exists(processed_path):
     train_dataset = torch.load(processed_path + "_train.pt", map_location="cpu")
     test_dataset = torch.load(processed_path + "_test.pt", map_location="cpu")
-    valid_dataset = torch.load(processed_path + "_valid.pt", map_location="cpu")
 else:
-    train_data, valid_data, test_data = load_pyg_data()
+    train_data, test_data = load_pyg_data()
     train_dataset = DataListSet(train_data)
     test_dataset = DataListSet(test_data)
-    valid_dataset = DataListSet(valid_data)
     torch.save(train_dataset, processed_path + "_train.pt")
     torch.save(test_dataset, processed_path + "_test.pt")
-    torch.save(valid_dataset, processed_path + "_valid.pt")
 
 train_dataset.data = train_dataset.data.to(device)
 test_dataset.data = test_dataset.data.to(device)
-valid_dataset.data = valid_dataset.data.to(device)
 
 print('load dataset!', flush=True)
 print(f"preprocess {int(time.time()-t1)} s", flush=True)
-print(len(train_dataset), len(test_dataset), len(valid_dataset))
+print(len(train_dataset), len(test_dataset))
 
 loss_fn = nn.L1Loss()
-score_fn = nn.L1Loss()
+loss_cls = nn.CrossEntropyLoss()
+score_fn_MAE = nn.L1Loss()
+score_fn_MSE = nn.MSELoss()
 
-record_path = str(args.dataset) + '_' + args.local_gnn_type + '+' + args.global_model_type + '/' + args.name + '_' + '/' \
-              + 'hid_dim_' + str(args.hid_dim) + '_layers_' + str(args.num_layers) + "_regress_" + str(args.num_layers_regression) + '_head_' + str(args.num_heads) + '_pool_' + args.global_pool + args.act + '_max_length_' + str(args.max_length) \
-              + '/lr_' + str(args.lr) + ('_cos-lr_' if args.cos_lr else '') + (('_Plateau_patience_' + str(args.patience) + '_factor_' + str(args.factor)) if not args.cos_lr else '') + '_decay_' + str(args.weight_decay) + \
+record_path = str(args.dataset) + '/' + args.local_gnn_type + '+' + args.global_model_type + args.name + '/' \
+              + 'hid_dim_' + str(args.hid_dim) + '_layers_' + str(args.num_layers) + "_regress_" + str(args.num_layers_regression) + '_cls_' + str(args.num_layers_cls) + '_head_' + str(args.num_heads) + '_pool_' + args.global_pool + '_' + args.act + '_max_length_' + str(args.max_length) \
+              + '/mask_' + str(args.mask_prob) + '_lr_' + str(args.lr) + ('_cos-lr_' if args.cos_lr else '') + (('_Plateau_patience_' + str(args.patience) + '_factor_' + str(args.factor)) if not args.cos_lr else '') + 'decay_' + str(args.weight_decay) + \
               '_epochs_' + str(args.epochs) + '_bs_' + str(args.batch_size) + '_drop_' + str(args.dropout) + '_attn_' + str(args.attn_dropout) + '_bn_' + str(args.batch_norm) + '_ln_' + str(args.layer_norm) + '/no_' + str(args.no)
 if not os.path.isdir(record_path):
     mkdir_p(record_path)
@@ -172,7 +172,7 @@ training_configurations = {
 
 
 def buildMod():
-    return GPSModel(args.hid_dim, args.out_dim, args.num_layers, args.num_layers_regression, args.global_pool, args.local_gnn_type,
+    return GPSModel(args.hid_dim, args.out_dim, args.num_layers, args.num_layers_regression, args.num_layers_cls, args.global_pool, args.local_gnn_type,
                     args.global_model_type, args.num_heads, args.act, args.pna_degrees, args.equivstable_pe, args.dropout,
                     args.attn_dropout, args.layer_norm, args.batch_norm, args.bigbird_cfg, args.log_attn_weights, args.max_length)
 
@@ -183,7 +183,7 @@ def train(mod, opt: AdamW, dl):
     N = 0
     for batch in dl:
         opt.zero_grad()
-        pred, y = mod(batch)
+        pred, y, logits = mod(batch)
         loss = loss_fn(pred.flatten(), y.flatten())
         loss.backward()
         opt.step()
@@ -194,26 +194,80 @@ def train(mod, opt: AdamW, dl):
     return np.sum(losss) / N
 
 
-@torch.no_grad()
-def test(mod, dl):
-    mod.eval()
+def train_cls(mod, opt: AdamW, dl):
+    mod.train()
     losss = []
     N = 0
     for batch in dl:
-        pred, y = mod(batch)
-        losss.append(score_fn(pred.flatten(), y.flatten()) * batch.num_graphs)
-        N += batch.num_graphs
+        mask = torch.bernoulli(torch.full([batch.x.shape[0]], 1-args.mask_prob)).bool()
+        label = torch.autograd.Variable(batch.x[mask])
+        batch.x[mask] = 26
+        opt.zero_grad()
+        pred, y, logits = mod(batch)
+        # print(label.shape)
+        # print(logits[mask].shape)
+        loss = loss_cls(logits[mask], label)
+        loss.backward()
+        opt.step()
+        num_graphs = batch.num_graphs
+        losss.append(loss * num_graphs)
+        N += num_graphs
     losss = [_.item() for _ in losss]
     return np.sum(losss) / N
 
 
+# def train_hybrid(mod, opt: AdamW, dl):
+#     mod.train()
+#     losss_reg = []
+#     losss_cls = []
+#     N = 0
+#     for batch in dl:
+#         opt.zero_grad()
+#         x = torch.autograd.Variable(batch.x)
+#         edge_attr = torch.autograd.Variable(batch.edge_attr)
+#         pred1, y, logits = mod(batch)
+#         loss1 = loss_fn(pred1.flatten(), y.flatten())
+#         losss_reg.append(loss1)
+#         batch.x = x
+#         batch.edge_attr = edge_attr
+#         mask = torch.bernoulli(torch.full([batch.x.shape[0]], 1 - args.mask_prob)).bool()
+#         label = torch.autograd.Variable(batch.x[mask])
+#         batch.x[mask] = 26
+#         pred, y, logits = mod(batch)
+#         loss2 = loss_cls(logits[mask], label)
+#         loss = loss1 + loss2
+#         loss.backward()
+#         opt.step()
+#         num_graphs = batch.num_graphs
+#         losss_cls.append(loss2 * num_graphs)
+#         N += num_graphs
+#     losss_reg = [_.item() for _ in losss_reg]
+#     losss_cls = [_.item() for _ in losss_cls]
+#     return np.sum(losss_reg) / N, np.sum(losss_cls) / N
+
+
+@torch.no_grad()
+def test(mod, dl):
+    mod.eval()
+    losss_MAE = []
+    losss_MSE = []
+    N = 0
+    for batch in dl:
+        pred, y, logits = mod(batch)
+        losss_MAE.append(score_fn_MAE(pred.flatten(), y.flatten()) * batch.num_graphs)
+        losss_MSE.append(score_fn_MSE(pred.flatten(), y.flatten()) * batch.num_graphs)
+        N += batch.num_graphs
+    losss_MAE = [_.item() for _ in losss_MAE]
+    losss_MSE = [_.item() for _ in losss_MSE]
+    return np.sum(losss_MAE) / N, np.sum(losss_MSE) / N
+
+
 train_curve = []
-valid_curve = []
-test_curve = []
+test_curve_1 = []
+test_curve_2 = []
 best_val_score = float("inf")
 bs = args.batch_size
 trn_dataloader = PygDataloader(train_dataset, batch_size=bs, shuffle=True, drop_last=False)
-val_dataloader = PygDataloader(valid_dataset, batch_size=bs)
 tst_dataloader = PygDataloader(test_dataset, batch_size=bs)
 
 model = buildMod().to(device)
@@ -224,56 +278,68 @@ for i in range(args.epochs):
     if args.cos_lr:
         adjust_learning_rate(optimizer, i, args.cos_lr, training_configurations)
     t1 = time.time()
-    loss = train(model, optimizer, trn_dataloader)
+    # loss = train(model, optimizer, trn_dataloader)
+    loss_seq = train_cls(model, optimizer, trn_dataloader)
+    loss_pred = train(model, optimizer, trn_dataloader)
     t2 = time.time()
     # print("train end", flush=True)
-    val_score = test(model, val_dataloader)
-    scd.step(val_score)
+    tst_MAE, tst_MSE = test(model, tst_dataloader)
+    scd.step(tst_MAE)
     t3 = time.time()
     print(
-        f"epoch {i}: train {loss:.4e} {int(t2 - t1)}s valid {val_score:.4e} {int(t3 - t2)}s ",
+        f"epoch {i}: train {loss_pred:.4e} {loss_seq:.4e} {int(t2 - t1)}s testMAE {tst_MAE:.4e} testMSE {tst_MSE:.4e} {int(t3 - t2)}s ",
         end="", flush=True)
-    if val_score < best_val_score:
-        best_val_score = val_score
-        torch.save(model.state_dict(), save_model_name)
-    tst_score = test(model, tst_dataloader)
-    t4 = time.time()
-    print(f"tst {tst_score:.4e} {int(t4-t3)}s ", end="")
-    print(optimizer.param_groups[0]['lr'])
-    # print(flush=True)
+    # if val_score < best_val_score:
+    #     best_val_score = val_score
+    #     torch.save(model.state_dict(), save_model_name)
+    # t4 = time.time()
+    # print(f"tst {tst_score:.4e} {int(t4-t3)}s ", end="")
+    # print(optimizer.param_groups[0]['lr'])
+    print(flush=True)
 
-    string = str({'Train': loss, 'Validation': val_score, 'Test': tst_score})
+    string = str({'TrainMAE': loss_pred, 'TrainCE': loss_seq, 'TestMAE': tst_MAE, 'TestMSE': tst_MSE})
     fd = open(record_file, 'a+')
     fd.write(string + '\n')
     fd.close()
 
-    train_curve.append(loss)
-    valid_curve.append(val_score)
-    test_curve.append(tst_score)
+    train_curve.append(loss_pred)
+    test_curve_1.append(tst_MAE)
+    test_curve_2.append(tst_MSE)
 
-best_val_epoch = np.argmin(np.array(valid_curve))
+best_epoch_1 = np.argmin(np.array(test_curve_1))
+best_epoch_2 = np.argmin(np.array(test_curve_2))
 best_train = min(train_curve)
 
 print('Finished training!')
-print('Best validation score: {}'.format(valid_curve[best_val_epoch]))
-print('Test score: {}'.format(test_curve[best_val_epoch]))
-print('Best test score: {}'.format(np.min(test_curve)))
+# print('Best validation score: {}'.format(valid_curve[best_val_epoch]))
+# print('Test score: {}'.format(test_curve[best_val_epoch]))
+print('Best test MAE: {}'.format(np.min(test_curve_1)))
+print('Best test MSE: {}'.format(np.min(test_curve_2)))
 
-np.savez(save_curve_name, train=np.array(train_curve), val=np.array(valid_curve), test=np.array(test_curve),
-             test_for_best_val=test_curve[best_val_epoch])
-np.savetxt(accuracy_file, np.array(test_curve))
+np.savez(save_curve_name, train=np.array(train_curve), testMAE=np.array(test_curve_1), testMSE=np.array(test_curve_2),
+             test_best_1=np.min(test_curve_1), test_best_2=np.min(test_curve_2))
+# np.savetxt(accuracy_file, np.array(test_curve_1))
 
-string = 'Best validation score: ' + str(valid_curve[best_val_epoch]) + ' Test score: ' + str(test_curve[best_val_epoch])
-mean_test_loss = np.mean(np.array(test_curve)[-10:-1])
+string = 'Best test MAE: ' + str(np.min(test_curve_1))
+mean_test_loss = np.mean(np.array(test_curve_1)[-10:])
 fd = open(record_file, 'a+')
 fd.write(string + '\n')
-fd.write('mean test loss: ' + str(mean_test_loss) + '\n')
+fd.write('mean test MAE: ' + str(mean_test_loss) + '\n')
+fd.close()
+
+string = 'Best test MSE: ' + str(np.min(test_curve_2))
+mean_test_loss = np.mean(np.array(test_curve_2)[-10:])
+fd = open(record_file, 'a+')
+fd.write(string + '\n')
+fd.write('mean test MSE: ' + str(mean_test_loss) + '\n')
 fd.close()
 
 plt.figure()
-plt.plot(test_curve, color='b')
+plt.plot(test_curve_1, color='b', label='MAE')
+plt.plot(test_curve_2, color='r', label='MSE')
 plt.xlabel('Epoch')
-plt.ylabel('MAE')
-plt.title('Test MAE')
+plt.ylabel('Test Loss')
+plt.legend()
+plt.title('Test Loss')
 # plt.show()
-plt.savefig(record_path + '/Test_MAE.png')
+plt.savefig(record_path + '/Test_Loss.png')
