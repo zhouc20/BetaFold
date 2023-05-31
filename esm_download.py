@@ -24,17 +24,17 @@ try:
                 extra_data = json.load(json_file)
         else:
             extra_data = {}
-        with tqdm(desc=f'downloading {csv_name}', total=len(csv_data), unit='proteins') as pbar:
+        num_rest = len(set(csv_data[:, 1]) - set(extra_data.keys()))
+        with tqdm(desc=f'downloading {csv_name}', total=num_rest, unit='proteins') as pbar:
             for i in range(len(csv_data)):
                 protein_id = csv_data[i, 1]
                 simple_fasta = csv_data[i, 2]
                 species = csv_data[i, 3]
                 Tm = csv_data[i, 4]
                 if len(simple_fasta) > 400:
-                    pbar.update(1)
+                    print('sequence too long')
                     continue
                 if protein_id in extra_data.keys():
-                    pbar.update(1)
                     continue
 
                 while True:
@@ -42,12 +42,12 @@ try:
                     result = result.text
                     # 可能会返回'INTERNAL SERVER ERROR'或者'forbidden'
                     if result[:6] == 'HEADER':
-                        print(f'{protein_id}: success')
-                        time.sleep(1)
+                        pbar.set_postfix({'protein_id': protein_id, 'state': 'success'})
+                        time.sleep(0.5)
                         break
                     else:
-                        time.sleep(2)
-                        print(f'{protein_id}: {result}')
+                        time.sleep(1.5)
+                        pbar.set_postfix({'protein_id': protein_id, 'state': result})
                 cut_idx = result.find('ATOM      1')
                 result = result[cut_idx:]
 
