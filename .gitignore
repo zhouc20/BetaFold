@@ -25,4 +25,3 @@ __pycache__
 
 # 过大的数据集
 /StructuredDatasets/*.json
-!/StructuredDatasets/fetched_ids.json
