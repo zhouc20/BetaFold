@@ -23,7 +23,7 @@ def update_fetched_ids():
             fetched_ids[protein_id] = 1116
     with open('./StructuredDatasets/fetched_ids.json', 'w') as json_file:
         json.dump(fetched_ids, json_file)
-    return set(fetched_ids.key())
+    return set(fetched_ids.keys())
 
 
 def merge_data():
