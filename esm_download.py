@@ -22,7 +22,7 @@ def update_fetched_ids():
         for protein_id in json_content.keys():
             fetched_ids[protein_id] = 1116
     with open('./StructuredDatasets/fetched_ids.json', 'w') as json_file:
-        json.dump(fetched_ids, json_file)
+        json.dump(fetched_ids, json_file, indent=4)
     return set(fetched_ids.keys())
 
 
@@ -30,8 +30,8 @@ def merge_data():
     key_words = ('test2_dataset', 'train_dataset')
     for key_word in key_words:
         files = glob.glob(f'./StructuredDatasets/{key_word}*.json')
-        if len(files) == 1:
-            continue
+        # if len(files) == 1:
+        #     continue
         data = {}
         for file in files:
             with open(file, 'r') as json_file:
@@ -161,4 +161,5 @@ if __name__ == '__main__':
     M.musculus      O.antarctica    P.torridus              S.cerevisiae
     T.thermophilus  thermophilus
     """
-    main(species_filter=('A.thaliana',))
+    merge_data()
+    # main(species_filter=('A.thaliana',))
