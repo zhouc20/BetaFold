@@ -91,5 +91,6 @@ try:
             json.dump(extra_data, json_file)
 finally:
     if csv_name is not None:
+        print('saving json file, please do not kill process')
         with open(f'./StructuredDatasets/{csv_name}.json', 'w') as json_file:
             json.dump(extra_data, json_file)
