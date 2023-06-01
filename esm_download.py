@@ -42,6 +42,8 @@ def merge_data():
 
 
 def main(species_filter=()):
+    if isinstance(species_filter, str):
+        species_filter = (species_filter,)
     url = 'https://api.esmatlas.com/foldSequence/v1/pdb'
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36 Edg/111.0.1661.41',
