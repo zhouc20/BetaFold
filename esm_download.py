@@ -161,5 +161,4 @@ if __name__ == '__main__':
     M.musculus      O.antarctica    P.torridus              S.cerevisiae
     T.thermophilus  thermophilus
     """
-    merge_data()
-    # main(species_filter=('A.thaliana',))
+    main(species_filter=('A.thaliana',))
