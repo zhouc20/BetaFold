@@ -11,8 +11,9 @@ from data_loading import read_csvs
 
 
 def update_fetched_ids():
+    with open('./StructuredDatasets/fetched_ids.json', 'r') as json_file:
+        fetched_ids = json.load(json_file)
     files = glob.glob('./StructuredDatasets/*.json')
-    fetched_ids = {}
     for file in files:
         if 'fetched_ids.json' in file:
             continue
@@ -22,6 +23,7 @@ def update_fetched_ids():
             fetched_ids[protein_id] = 1116
     with open('./StructuredDatasets/fetched_ids.json', 'w') as json_file:
         json.dump(fetched_ids, json_file)
+    return set(fetched_ids.keys())
 
 
 def merge_data():
@@ -40,6 +42,8 @@ def merge_data():
 
 
 def main(species_filter=()):
+    if isinstance(species_filter, str):
+        species_filter = (species_filter,)
     url = 'https://api.esmatlas.com/foldSequence/v1/pdb'
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36 Edg/111.0.1661.41',
@@ -50,11 +54,8 @@ def main(species_filter=()):
     csvs_data = read_csvs(data_filter=lambda x: len(x[2]) <= 400)
     csv_name, extra_data = None, {}
     print('updating fetched protein ids')
-    update_fetched_ids()
+    fetched_ids = update_fetched_ids()
     print('finish')
-    with open('./StructuredDatasets/fetched_ids.json', 'r') as json_file:
-        fetched_ids = json.load(json_file)
-    fetched_ids = set(fetched_ids.keys())
 
     try:
         for csv_name, csv_data in csvs_data.items():
@@ -155,9 +156,9 @@ def main(species_filter=()):
 
 if __name__ == '__main__':
     """
-    A.thaliana      B.subtilis      C.elegans               D.melanogaster,
-    D.rerio         E.coli          G.stearothermophilus    H.sapiens,
-    M.musculus      O.antarctica    P.torridus              S.cerevisiae,
+    A.thaliana      B.subtilis      C.elegans               D.melanogaster
+    D.rerio         E.coli          G.stearothermophilus    H.sapiens
+    M.musculus      O.antarctica    P.torridus              S.cerevisiae
     T.thermophilus  thermophilus
     """
-    main(species_filter=('A.thaliana', 'B.subtilis'))
+    main(species_filter=('A.thaliana',))
