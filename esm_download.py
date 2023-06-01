@@ -25,6 +25,8 @@ try:
         else:
             extra_data = {}
         num_rest = len(set(csv_data[:, 1]) - set(extra_data.keys()))
+        if num_rest == 0:
+            continue
         with tqdm(desc=f'downloading {csv_name}', total=num_rest, unit='proteins') as pbar:
             for i in range(len(csv_data)):
                 protein_id = csv_data[i, 1]
