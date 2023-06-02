@@ -30,7 +30,7 @@ def update_fetched_ids():
         json_content = load_json(file)
         for protein_id in json_content.keys():
             fetched_ids[protein_id] = 1116
-    dump_json(fetched_ids, './StructuredDatasets/fetched_ids.json')
+    dump_json(fetched_ids, './StructuredDatasets/fetched_ids.json', indent=4)
     return set(fetched_ids.keys())
 
 
