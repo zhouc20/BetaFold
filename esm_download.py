@@ -10,19 +10,27 @@ import numpy as np
 from data_loading import read_csvs
 
 
+def load_json(path):
+    with open(path, 'r') as json_file:
+        obj = json.load(json_file)
+    return obj
+
+
+def dump_json(obj, path, **kwargs):
+    with open(path, 'w') as json_file:
+        json.dump(obj, json_file, **kwargs)
+
+
 def update_fetched_ids():
-    with open('./StructuredDatasets/fetched_ids.json', 'r') as json_file:
-        fetched_ids = json.load(json_file)
+    fetched_ids = load_json('./StructuredDatasets/fetched_ids.json')
     files = glob.glob('./StructuredDatasets/*.json')
     for file in files:
         if 'fetched_ids.json' in file:
             continue
-        with open(file, 'r') as json_file:
-            json_content = json.load(json_file)
+        json_content = load_json(file)
         for protein_id in json_content.keys():
             fetched_ids[protein_id] = 1116
-    with open('./StructuredDatasets/fetched_ids.json', 'w') as json_file:
-        json.dump(fetched_ids, json_file, indent=4)
+    dump_json(fetched_ids, './StructuredDatasets/fetched_ids.json')
     return set(fetched_ids.keys())
 
 
@@ -34,11 +42,9 @@ def merge_data():
             continue
         data = {}
         for file in files:
-            with open(file, 'r') as json_file:
-                data.update(json.load(json_file))
+            data.update(load_json(file))
             os.remove(file)
-        with open(f'./StructuredDatasets/{key_word}.json', 'w') as json_file:
-            json.dump(data, json_file)
+        dump_json(data, f'./StructuredDatasets/{key_word}.json')
 
 
 def main(species_filter=()):
@@ -127,8 +133,7 @@ def main(species_filter=()):
             k = 1
             while True:
                 if not os.path.exists(f'./StructuredDatasets/{csv_name}_{k}.json'):
-                    with open(f'./StructuredDatasets/{csv_name}_{k}.json', 'w') as json_file:
-                        json.dump(extra_data, json_file)
+                    dump_json(extra_data, f'./StructuredDatasets/{csv_name}_{k}.json')
                     break
                 else:
                     k += 1
@@ -140,8 +145,7 @@ def main(species_filter=()):
             k = 1
             while True:
                 if not os.path.exists(f'./StructuredDatasets/{csv_name}_{k}.json'):
-                    with open(f'./StructuredDatasets/{csv_name}_{k}.json', 'w') as json_file:
-                        json.dump(extra_data, json_file)
+                    dump_json(extra_data, f'./StructuredDatasets/{csv_name}_{k}.json')
                     break
                 else:
                     k += 1
