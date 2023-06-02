@@ -2,12 +2,24 @@ import json
 import os
 import time
 import glob
+import pickle
 
 import requests
 from tqdm import tqdm
 import numpy as np
 
 from data_loading import read_csvs
+
+
+def pickle_dump(obj, file_path):
+    with open(file_path, "xb") as f:
+        pickle.dump(obj, f)
+
+
+def pickle_load(file_path):
+    with open(file_path, "rb") as f:
+        obj = pickle.load(f)
+    return obj
 
 
 def load_json(path):
@@ -88,20 +100,23 @@ def main(species_filter=()):
                     if protein_id in fetched_ids:
                         continue
                     # 不断尝试爬取直至成功
-                    wait = 0.5
+                    pbar.set_postfix({'protein_id': protein_id, 'state': 'fetching...'})
+                    wait = 1
+                    num_try = 1
                     while True:
                         result = requests.post(url, data=simple_fasta, headers=headers)
                         result = result.text
                         # 成功爬取的报文以'HEADER'开头
                         if result[:6] == 'HEADER':
                             pbar.set_postfix({'protein_id': protein_id, 'state': 'success'})
-                            time.sleep(0.1)
+                            time.sleep(1.0)
                             break
                         # 失败报文可能包含'INTERNAL SERVER ERROR', 'forbidden'
                         else:
-                            pbar.set_postfix({'protein_id': protein_id, 'state': result})
+                            pbar.set_postfix({'protein_id': protein_id, 'state': f'{result}: try{num_try}'})
                             wait = wait * 1.2 if wait * 1.2 <= 10 else wait
                             time.sleep(wait)
+                            num_try += 1
                     # 定位到有效数据区
                     cut_idx = result.find('ATOM      1')
                     result = result[cut_idx:]
@@ -137,10 +152,10 @@ def main(species_filter=()):
                     break
                 else:
                     k += 1
-    finally:
+    except:
         # 程序意外终止时, 如KeyBoardInterrupt, 则保存已爬取的数据
         # 由于数据量大, json.dump耗时较久, 约十几秒, 切勿强行结束程序, 导致保存中断, 数据丢失
-        if csv_name is not None:
+        if csv_name is not None and extra_data != {}:
             print('saving data, please do not kill process')
             k = 1
             while True:
@@ -150,6 +165,7 @@ def main(species_filter=()):
                 else:
                     k += 1
             print('finish')
+    finally:
         print('updating fetched protein ids')
         update_fetched_ids()
         print('finish')
