@@ -30,8 +30,8 @@ def merge_data():
     key_words = ('test2_dataset', 'train_dataset')
     for key_word in key_words:
         files = glob.glob(f'./StructuredDatasets/{key_word}*.json')
-        # if len(files) == 1:
-        #     continue
+        if len(files) == 1 and files[0].endswith(f'{key_word}.json'):
+            continue
         data = {}
         for file in files:
             with open(file, 'r') as json_file:
@@ -161,4 +161,4 @@ if __name__ == '__main__':
     M.musculus      O.antarctica    P.torridus              S.cerevisiae
     T.thermophilus  thermophilus
     """
-    main(species_filter=('A.thaliana',))
+    main(species_filter=('M.musculus', 'O.antarctica', 'P.torridus'))
