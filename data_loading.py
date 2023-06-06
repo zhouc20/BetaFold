@@ -1,8 +1,16 @@
 import csv
 import glob
 import os
+import pickle
 
 import numpy as np
+from torch.utils.data import Dataset, DataLoader
+
+
+def pickle_load(file_path):
+    with open(file_path, "rb") as f:
+        obj = pickle.load(f)
+    return obj
 
 
 def read_csvs(data_filter=lambda _: True):
@@ -37,9 +45,37 @@ def read_csvs(data_filter=lambda _: True):
     return csvs_data
 
 
+class StructDataset(Dataset):
+    def __init__(self):
+        super().__init__()
+        print('loading...')
+        self.data = pickle_load('./BetaFold/StructuredDatasets/train_dataset.pkl')
+        print('loading finish')
+        self.numerical_features()
+        
+    def numerical_features(self):
+        dist = []
+        for v in self.data.values():
+            vv = v['structure']
+            indices = [i for i, x in enumerate(vv['atom_name']) if x == 'CA']
+            x, y, z = np.array(vv['x']), np.array(vv['y']), np.array(vv['z'])
+            x, y, z = x[indices], y[indices], z[indices]
+            d = ((x[:-1] - x[1:]) ** 2 + (y[:-1] - y[1:]) ** 2 + (z[:-1] - z[1:]) ** 2) ** 0.5
+            d = np.mean(d)
+            dist.append(d)
+        print(sum(dist) / len(dist))
+
+    def __len__(self):
+        return 0
+
+    def __getitem__(self, item):
+        return 0
+
+
 def main():
-    all_data = read_csvs()
-    print(all_data.keys())
+    # all_data = read_csvs()
+    # print(all_data.keys())
+    d = StructDataset()
 
 
 if __name__ == '__main__':
