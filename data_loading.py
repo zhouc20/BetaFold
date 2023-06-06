@@ -2,9 +2,35 @@ import csv
 import glob
 import os
 import pickle
+import random
 
 import numpy as np
+import torch
 from torch.utils.data import Dataset, DataLoader
+
+
+"""
+蛋白质结构数据集中所有可能的atom_name, 共36种
+C, CA, CB, CD, CD1, CD2, CE, CE1, CE2, CE3, CG, CG1, CG2, CH2, CZ, CZ2, CZ3, 
+N, ND1, ND2, NE, NE1, NE2, NH1, NH2, NZ, 
+O, OD1, OD2, OE1, OE2, OG, OG1, OH, 
+SD, SG
+
+数据集蛋白质平均长度约为250, 也即每条蛋白质数据约250个CA
+
+数据集中共20种氨基酸, 分别为
+ALA, ARG, ASN, ASP, CYS, 
+GLN, GLU, GLY, HIS, ILE, 
+LEU, LYS, MET, PHE, PRO, 
+SER, THR, TRP, TYR, VAL
+"""
+
+RESIDUE_TO_NUM = {
+    'ALA': 0, 'ARG': 1, 'ASN': 2, 'ASP': 3, 'CYS': 4, 
+    'GLN': 5, 'GLU': 6, 'GLY': 7, 'HIS': 8, 'ILE': 9, 
+    'LEU': 10, 'LYS': 11, 'MET': 12, 'PHE': 13, 'PRO': 14, 
+    'SER': 15, 'THR': 16, 'TRP': 17, 'TYR': 18, 'VAL': 19
+}
 
 
 def pickle_load(file_path):
@@ -45,13 +71,26 @@ def read_csvs(data_filter=lambda _: True):
     return csvs_data
 
 
-class StructDataset(Dataset):
-    def __init__(self):
+class StructDataset(object):
+    def __init__(self, path='./BetaFold/StructuredDatasets/train_dataset.pkl', batch_size=4, random=True):
         super().__init__()
         print('loading...')
-        self.data = pickle_load('./BetaFold/StructuredDatasets/train_dataset.pkl')
+        self.data = pickle_load(path)
         print('loading finish')
-        self.numerical_features()
+        # self.numerical_features()
+        self.structures = [v['structure'] for v in self.data.values()]
+        del self.data # free memory
+        self.atom_names =[v['atom_name'] for v in self.structures]
+        self.xs = [v['x'] for v in self.structures]
+        self.ys = [v['y'] for v in self.structures]
+        self.zs = [v['z'] for v in self.structures]
+        self.residue_names = [v['residue_name'] for v in self.structures]
+        
+        self.random = random
+        self.batch_size = batch_size
+        self.num_getitem = 0  # 计数调用__getitem__的次数
+        self.order = np.random.permutation(len(self.structures))
+        
         
     def numerical_features(self):
         dist = []
@@ -66,16 +105,45 @@ class StructDataset(Dataset):
         print(sum(dist) / len(dist))
 
     def __len__(self):
-        return 0
+        return len(self.structures) // self.batch_size
 
     def __getitem__(self, item):
-        return 0
+        pos = []
+        batch = []
+        node_atom = []
+        
+        self.num_getitem += self.batch_size
+        if self.num_getitem > len(self):
+            self.order = np.array(random.sample(range(len(self.structures)), len(self.structures)))
+        if self.random:
+            idxes = self.order[range(item * self.batch_size, (item + 1) * self.batch_size)]
+        else:
+            idxes = np.array(range(item * self.batch_size, (item + 1) * self.batch_size))
+        for b, i in enumerate(idxes):
+            js = [k for k, name in enumerate(self.atom_names[i]) if name == 'CA']
+            x = torch.tensor([self.xs[i][j] for j in js], dtype=torch.float32)
+            y = torch.tensor([self.ys[i][j] for j in js], dtype=torch.float32)
+            z = torch.tensor([self.zs[i][j] for j in js], dtype=torch.float32)
+            residue_name = [self.residue_names[i][j] for j in js]
+            residue_name = list(map(lambda inputs: RESIDUE_TO_NUM[inputs], residue_name))
+            residue_name = torch.tensor(residue_name, dtype=torch.int64)
+            pos.append(torch.stack([x, y, z], dim=-1))
+            batch.append(torch.tensor([b] * x.shape[0], dtype=torch.int64))
+            node_atom.append(residue_name)
+        return {'pos': torch.cat(pos, dim=0),
+                'batch': torch.cat(batch, dim=0),
+                'node_atom': torch.cat(node_atom, dim=0)}
 
 
 def main():
     # all_data = read_csvs()
     # print(all_data.keys())
     d = StructDataset()
+    for i in range(len(d)):
+        data = d[i]
+        print(data['pos'].shape)
+        print(data['batch'].shape)
+        print(data['node_atom'].shape)
 
 
 if __name__ == '__main__':
