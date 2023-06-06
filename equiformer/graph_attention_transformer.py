@@ -886,8 +886,7 @@ class GraphAttentionTransformer(torch.nn.Module):
         Returns:
             torch.Tensor: (batch_size, 1)
         """
-        edge_src, edge_dst = radius_graph(pos, r=self.max_radius, batch=batch,
-            max_num_neighbors=10)
+        edge_src, edge_dst = radius_graph(pos, r=self.max_radius, batch=batch, max_num_neighbors=2)
         edge_vec = pos.index_select(0, edge_src) - pos.index_select(0, edge_dst)
         edge_sh = o3.spherical_harmonics(l=self.irreps_edge_attr,
             x=edge_vec, normalize=True, normalization='component')
@@ -1040,8 +1039,8 @@ def graph_attention_transformer_nonlinear_bessel_l2_drop00(irreps_in, radius, nu
 
 
 def main():
-    device = torch.device('cpu')
-    model = graph_attention_transformer_l2(
+    device = torch.device('cuda')
+    model = graph_attention_transformer_nonlinear_l2(
         irreps_in='5x0e', 
         radius=5.0, 
         num_basis=128, 
@@ -1055,9 +1054,9 @@ def main():
     print(f'{n_parameters} parameters')
     
     f_in=None
-    pos=torch.ones((250, 3), dtype=torch.float32).to(device)
-    batch=torch.tensor([0] * 250, dtype=torch.int64).to(device)
-    node_atom=torch.tensor((list(range(20)) * 100)[:250], dtype=torch.int64).to(device)
+    pos=torch.ones((4000, 3), dtype=torch.float32).to(device)
+    batch=torch.tensor([0] * 1000 + [1] * 1000 + [2] * 1000 + [3] * 1000, dtype=torch.int64).to(device)
+    node_atom=torch.tensor((list(range(20)) * 1000)[:4000], dtype=torch.int64).to(device)
     y = model(f_in=f_in, pos=pos, batch=batch, node_atom=node_atom)
     print(y.shape)
 
