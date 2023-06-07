@@ -43,7 +43,7 @@ LEU, LYS, MET, PHE, PRO,
 SER, THR, TRP, TYR, VAL
 """
 
-_MAX_ATOM_TYPE = 20
+_MAX_ATOM_TYPE = 36
 # Statistics of QM9 with cutoff radius = 5
 _AVG_NUM_NODES = 250.0
 _AVG_DEGREE = 2.0
@@ -874,7 +874,7 @@ class GraphAttentionTransformer(torch.nn.Module):
         return set(no_wd_list)
         
 
-    def forward(self, f_in, pos, batch, node_atom, **kwargs) -> torch.Tensor:
+    def forward(self, f_in, pos, batch, node_atom, max_num_neighbors, **kwargs) -> torch.Tensor:
         """前向传播, f_in和kwargs似乎没用到
 
         Args:
@@ -882,11 +882,12 @@ class GraphAttentionTransformer(torch.nn.Module):
             pos (FloatTensor): (N, 3)
             batch (IntTensor): (N,)
             node_atom (IntTensor): (N,)
+            max_num_neighbors (int): 原论文为1000
 
         Returns:
             torch.Tensor: (batch_size, 1)
         """
-        edge_src, edge_dst = radius_graph(pos, r=self.max_radius, batch=batch, max_num_neighbors=10)
+        edge_src, edge_dst = radius_graph(pos, r=self.max_radius, batch=batch, max_num_neighbors=max_num_neighbors)
         edge_vec = pos.index_select(0, edge_src) - pos.index_select(0, edge_dst)
         edge_sh = o3.spherical_harmonics(l=self.irreps_edge_attr,
             x=edge_vec, normalize=True, normalization='component')
