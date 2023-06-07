@@ -51,11 +51,11 @@ def main():
                 batch = data['batch'].to(device)
                 node_atom = data['node_atom'].to(device)
                 pred = network(f_in=None, pos=pos, batch=batch, node_atom=node_atom)
-                loss = criterion(data["Tm"].to(device), pred * task_std + task_mean).item()
+                loss = criterion(data["Tm"].to(device), pred * task_std + task_mean)
                 test_loss.append(loss.item())
         print(f'test avg MAE={sum(test_loss) / len(test_loss)}')
         torch.save(network.state_dict(), f'./checkpoints/epoch_{epoch}.pth')
-                
+        
         
 
 
