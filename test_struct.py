@@ -26,13 +26,14 @@ def main():
         atomref=None, 
         drop_path=0.0
     )
-    network.load_state_dict(torch.load('./checkpoints/epoch_1.pth'))
+    network.load_state_dict(torch.load('./checkpoints/epoch_7.pth'))
     network = network.to(device)
     # network = torch.nn.DataParallel(network)
     n_parameters = sum(p.numel() for p in network.parameters() if p.requires_grad)
     print(f'{n_parameters} parameters')
     
-    test_loss = []
+    l1 = []
+    l2 = []
     network.eval()
     with torch.no_grad():
         for i in range(len(test_set)):
@@ -41,9 +42,10 @@ def main():
             batch = data['batch'].to(device)
             node_atom = data['node_atom'].to(device)
             pred = network(f_in=None, pos=pos, batch=batch, node_atom=node_atom, max_num_neighbors=max_num_neighbors)
-            loss = torch.nn.L1Loss()(data["Tm"].to(device), pred * task_std + task_mean)
-            test_loss.append(loss.item())
-    print(f'test avg MAE={sum(test_loss) / len(test_loss)}')
+            l1.append(torch.nn.L1Loss()(data["Tm"].to(device), pred * task_std + task_mean).item())
+            l2.append(torch.nn.MSELoss()(data["Tm"].to(device), pred * task_std + task_mean).item())
+    print(f'test avg MAE={sum(l1) / len(l1)}')
+    print(f'test avg MSE={sum(l2) / len(l2)}')
 
 
 if __name__ == '__main__':
