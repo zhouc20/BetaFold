@@ -72,12 +72,13 @@ def read_csvs(data_filter=lambda _: True):
 
 
 class StructDataset(object):
-    def __init__(self, path='./BetaFold/StructuredDatasets/train_dataset.pkl', batch_size=4, random=True):
+    def __init__(self, path, batch_size=4, random=True):
         super().__init__()
         print('loading...')
         self.data = pickle_load(path)
         print('loading finish')
         # self.numerical_features()
+        self.Tms = [float(v['Tm']) for v in self.data.values()]
         self.structures = [v['structure'] for v in self.data.values()]
         del self.data # free memory
         self.atom_names =[v['atom_name'] for v in self.structures]
@@ -115,6 +116,7 @@ class StructDataset(object):
         self.num_getitem += self.batch_size
         if self.num_getitem > len(self):
             self.order = np.array(random.sample(range(len(self.structures)), len(self.structures)))
+            self.num_getitem -= len(self)
         if self.random:
             idxes = self.order[range(item * self.batch_size, (item + 1) * self.batch_size)]
         else:
@@ -130,20 +132,22 @@ class StructDataset(object):
             pos.append(torch.stack([x, y, z], dim=-1))
             batch.append(torch.tensor([b] * x.shape[0], dtype=torch.int64))
             node_atom.append(residue_name)
-        return {'pos': torch.cat(pos, dim=0),
-                'batch': torch.cat(batch, dim=0),
-                'node_atom': torch.cat(node_atom, dim=0)}
+        return {'pos': torch.cat(pos, dim=0).clone(),
+                'batch': torch.cat(batch, dim=0).clone(),
+                'node_atom': torch.cat(node_atom, dim=0).clone(),
+                'Tm': torch.tensor([self.Tms[i] for i in idxes], dtype=torch.float32).clone().unsqueeze(-1)}
 
 
 def main():
     # all_data = read_csvs()
     # print(all_data.keys())
-    d = StructDataset()
+    d = StructDataset(path='./BetaFold/StructuredDatasets/train_dataset.pkl')
     for i in range(len(d)):
         data = d[i]
         print(data['pos'].shape)
         print(data['batch'].shape)
         print(data['node_atom'].shape)
+        print(data['Tm'].shape)
 
 
 if __name__ == '__main__':

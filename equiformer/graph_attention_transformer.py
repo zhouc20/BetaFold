@@ -7,17 +7,17 @@ from e3nn.util.jit import compile_mode
 
 import torch_geometric
 
-from registry import register_model
-from instance_norm import EquivariantInstanceNorm
-from graph_norm import EquivariantGraphNorm
-from layer_norm import EquivariantLayerNormV2
-from fast_layer_norm import EquivariantLayerNormFast
-from radial_func import RadialProfile
-from tensor_product_rescale import (TensorProductRescale, LinearRS,
+from .registry import register_model
+from .instance_norm import EquivariantInstanceNorm
+from .graph_norm import EquivariantGraphNorm
+from .layer_norm import EquivariantLayerNormV2
+from .fast_layer_norm import EquivariantLayerNormFast
+from .radial_func import RadialProfile
+from .tensor_product_rescale import (TensorProductRescale, LinearRS,
     FullyConnectedTensorProductRescale, irreps2gate, sort_irreps_even_first)
-from fast_activation import Activation, Gate
-from drop import EquivariantDropout, GraphDropPath
-from gaussian_rbf import GaussianRadialBasisLayer
+from .fast_activation import Activation, Gate
+from .drop import EquivariantDropout, GraphDropPath
+from .gaussian_rbf import GaussianRadialBasisLayer
 
 # for bessel radial basis
 from ocpmodels.models.gemnet.layers.radial_basis import RadialBasis
@@ -886,7 +886,7 @@ class GraphAttentionTransformer(torch.nn.Module):
         Returns:
             torch.Tensor: (batch_size, 1)
         """
-        edge_src, edge_dst = radius_graph(pos, r=self.max_radius, batch=batch, max_num_neighbors=2)
+        edge_src, edge_dst = radius_graph(pos, r=self.max_radius, batch=batch, max_num_neighbors=10)
         edge_vec = pos.index_select(0, edge_src) - pos.index_select(0, edge_dst)
         edge_sh = o3.spherical_harmonics(l=self.irreps_edge_attr,
             x=edge_vec, normalize=True, normalization='component')
