@@ -56,7 +56,7 @@ def main():
                 pos = data['pos'].to(device)
                 batch = data['batch'].to(device)
                 node_atom = data['node_atom'].to(device)
-                pred = network(f_in=None, pos=pos, batch=batch, node_atom=node_atom)
+                pred = network(f_in=None, pos=pos, batch=batch, node_atom=node_atom, max_num_neighbors=max_num_neighbors)
                 loss = torch.nn.L1Loss()(data["Tm"].to(device), pred * task_std + task_mean)
                 test_loss.append(loss.item())
         print(f'test avg MAE={sum(test_loss) / len(test_loss)}')
