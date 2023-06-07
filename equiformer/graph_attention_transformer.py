@@ -43,10 +43,10 @@ LEU, LYS, MET, PHE, PRO,
 SER, THR, TRP, TYR, VAL
 """
 
-_MAX_ATOM_TYPE = 36
+_MAX_ATOM_TYPE = 20
 # Statistics of QM9 with cutoff radius = 5
 _AVG_NUM_NODES = 250.0
-_AVG_DEGREE = 2.0
+_AVG_DEGREE = 256.0
 
 
 def get_norm_layer(norm_type):
