@@ -168,7 +168,7 @@ class StructDataset(object):
 def main():
     # all_data = read_csvs()
     # print(all_data.keys())
-    d = StructDataset(path='./BetaFold/StructuredDatasets/train_dataset.pkl')
+    d = StructDataset(path='./StructuredDatasets/test2_dataset.pkl')
     for i in range(len(d)):
         data = d[i]
         print(data['pos'].shape)
