@@ -162,7 +162,7 @@ def side_chain_torsion_angles(fasta, structure, pad=-1.0):
     result = []
     for i, residue_type in enumerate(fasta):
         query = LOOKUP[FASTA_LOOKUP[residue_type]]
-        tmp = [pad] * 4
+        tmp = [torch.tensor([pad]), torch.tensor([pad]), torch.tensor([pad]), torch.tensor([pad])]
         slice = [k for k in range(len(structure['residue_idx'])) if structure['residue_idx'][k] == i + 1]
         for j, q in enumerate(query):
             idxes = [structure['atom_name'][slice[0]:slice[-1] + 1].index(k) for k in q]
