@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch_geometric.graphgym.register as register
 import torch_geometric.nn as pygnn
+from torch_geometric.graphgym.config import cfg
 from performer_pytorch import SelfAttention
 from torch_geometric.data import Batch
 from torch_geometric.nn import Linear as Linear_pyg
