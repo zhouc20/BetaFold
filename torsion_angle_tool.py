@@ -1,4 +1,5 @@
 import torch
+from data_loading import pickle_load
 
 
 FASTA_LOOKUP = {
@@ -145,7 +146,7 @@ def points2angle(p1, p2, p3, p4):
     s1 = points2plane(p1, p2, p3)
     s2 = points2plane(p2, p3, p4)
     angle = planes2angle(s1, s2)
-    return angle
+    return angle.unsqueeze(0)
 
 
 def side_chain_torsion_angles(fasta, structure, pad=-1.0):
@@ -174,3 +175,14 @@ def side_chain_torsion_angles(fasta, structure, pad=-1.0):
             tmp[j] = angle
         result.append(torch.cat(tmp, dim=0))
     return torch.stack(result, dim=0)
+
+
+def main():
+    d = pickle_load('./StructuredDatasets/test2_dataset.pkl')
+    for v in d.values():
+        angle = side_chain_torsion_angles(v['simple_fasta'], v['structure'])
+        print(angle)
+
+
+if __name__ == '__main__':
+    main()
