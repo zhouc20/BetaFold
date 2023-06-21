@@ -17,6 +17,7 @@ import math
 import errno
 import matplotlib.pyplot as plt
 from layer.GPS_model import GPSModel
+from layer.pronet.pronet import ProNet
 
 
 class Unbuffered(object):
@@ -40,8 +41,9 @@ sys.stdout = Unbuffered(sys.stdout)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--task", type=str, default="thermal_stability")
-parser.add_argument("--dataset", type=str, default="ProTstab2_3d")
-parser.add_argument('--model', type=str, default='Transformer')
+parser.add_argument("--dataset", type=str, default="ProTstab2_3d_full")
+parser.add_argument('--model', type=str, default='GPS')
+parser.add_argument('--level', type=str, default='aminoacid')
 parser.add_argument('--batch_size', type=int, default=256)
 parser.add_argument('--epochs', type=int, default=100,
                     help='number of epochs to train (default: 100)')
@@ -131,16 +133,16 @@ train_path = 'StructuredDatasets/train_dataset.pkl'
 test_path = 'StructuredDatasets/test2_dataset.pkl'
 # processed_path = f"data/{args.dataset}.pt"
 processed_path = f"data/{args.dataset}"
-if os.path.exists(processed_path):
-    train_dataset = torch.load(processed_path + "_train.pt", map_location="cpu")
-    test_dataset = torch.load(processed_path + "_test.pt", map_location="cpu")
-else:
-    train_data = load_pygdata_3d(train_path)
-    test_data = load_pygdata_3d(test_path)
-    train_dataset = DataListSet(train_data)
-    test_dataset = DataListSet(test_data)
-    torch.save(train_dataset, processed_path + "_train.pt")
-    torch.save(test_dataset, processed_path + "_test.pt")
+# if os.path.exists(processed_path):
+train_dataset = torch.load(processed_path + "_train.pt", map_location="cpu")
+test_dataset = torch.load(processed_path + "_test.pt", map_location="cpu")
+# else:
+#     train_data = load_pygdata_3d(train_path)
+#     test_data = load_pygdata_3d(test_path)
+#     train_dataset = DataListSet(train_data)
+#     test_dataset = DataListSet(test_data)
+#     torch.save(train_dataset, processed_path + "_train.pt")
+#     torch.save(test_dataset, processed_path + "_test.pt")
 
 train_dataset.data = train_dataset.data.to(device)
 test_dataset.data = test_dataset.data.to(device)
@@ -154,7 +156,7 @@ loss_cls = nn.CrossEntropyLoss()
 score_fn_MAE = nn.L1Loss()
 score_fn_MSE = nn.MSELoss()
 
-record_path = str(args.dataset) + '/' + args.local_gnn_type + '+' + args.global_model_type + (('_equiformer_radius' + str(args.radius) + '_neighbor_' + str(args.max_num_neighbors)) if args.equiformer else '_') + args.name + '/' \
+record_path = str(args.dataset) + '/' + args.model + args.local_gnn_type + '+' + args.global_model_type + (('_level_' + args.level) if args.model == 'pronet' else '') + (('_equiformer_radius' + str(args.radius) + '_neighbor_' + str(args.max_num_neighbors)) if args.equiformer else '_') + args.name + '/' \
               + 'hid_dim_' + str(args.hid_dim) + '_layers_' + str(args.num_layers) + "_regress_" + str(args.num_layers_regression) + '_cls_' + str(args.num_layers_cls) + '_head_' + str(args.num_heads) + '_pool_' + args.global_pool + '_' + args.act + '_max_length_' + str(args.max_length) \
               + '/mask_' + str(args.mask_prob) + '_lr_' + str(args.lr) + ('_cos-lr_' if args.cos_lr else '') + (('_Plateau_patience_' + str(args.patience) + '_factor_' + str(args.factor)) if not args.cos_lr else '') + 'decay_' + str(args.weight_decay) + \
               '_epochs_' + str(args.epochs) + '_bs_' + str(args.batch_size) + '_drop_' + str(args.dropout) + '_attn_' + str(args.attn_dropout) + '_bn_' + str(args.batch_norm) + '_ln_' + str(args.layer_norm) + '/no_' + str(args.no)
@@ -184,9 +186,13 @@ def buildMod():
     cfg.attention_type = "block_sparse"
     cfg.block_size = 2
     bigbird_cfg = None if not args.bigbird_cfg else cfg
-    return GPSModel(args.hid_dim, args.out_dim, args.num_layers, args.num_layers_regression, args.num_layers_cls, args.global_pool, args.local_gnn_type,
+    if args.model == 'GPS':
+        return GPSModel(args.hid_dim, args.out_dim, args.num_layers, args.num_layers_regression, args.num_layers_cls, args.global_pool, args.local_gnn_type,
                     args.global_model_type, args.num_heads, args.act, args.pna_degrees, args.equivstable_pe, args.dropout,
                     args.attn_dropout, args.layer_norm, args.batch_norm, bigbird_cfg, args.log_attn_weights, args.max_length)
+    else:
+        assert args.level in ['aminoacid', 'backbone', 'allatom']
+        return ProNet(args.level, args.num_layers, args.hid_dim, args.out_dim)
 
 
 def train(mod, opt: AdamW, dl):
@@ -195,7 +201,11 @@ def train(mod, opt: AdamW, dl):
     N = 0
     for batch in dl:
         opt.zero_grad()
-        pred, y, logits = mod(batch)
+        if args.model == 'pronet':
+            y = batch.y
+            pred = mod(batch)
+        else:
+            pred, y, logits = mod(batch)
         loss = loss_fn(pred.flatten(), y.flatten())
         loss.backward()
         opt.step()
@@ -265,7 +275,11 @@ def test(mod, dl):
     losss_MSE = []
     N = 0
     for batch in dl:
-        pred, y, logits = mod(batch)
+        if args.model == 'pronet':
+            y = batch.y
+            pred = mod(batch)
+        else:
+            pred, y, logits = mod(batch)
         losss_MAE.append(score_fn_MAE(pred.flatten(), y.flatten()) * batch.num_graphs)
         losss_MSE.append(score_fn_MSE(pred.flatten(), y.flatten()) * batch.num_graphs)
         N += batch.num_graphs
