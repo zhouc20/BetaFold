@@ -3,10 +3,13 @@ import numpy as np
 import torch.nn as nn
 import torch
 from data.datalist import DataListSet
-from data.pyg_data_loader import load_pyg_data
+from data.pyg_data_loader import load_pyg_data, load_pygdata_3d
 from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch_geometric.data import DataLoader as PygDataloader
+from torch_geometric.graphgym.config import (cfg, dump_cfg,
+                                             set_cfg, load_cfg,
+                                             makedirs_rm_exist)
 import argparse
 import random
 import os, sys
@@ -37,7 +40,7 @@ sys.stdout = Unbuffered(sys.stdout)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--task", type=str, default="thermal_stability")
-parser.add_argument("--dataset", type=str, default="ProTstab2_new")
+parser.add_argument("--dataset", type=str, default="ProTstab2_3d")
 parser.add_argument('--model', type=str, default='Transformer')
 parser.add_argument('--batch_size', type=int, default=256)
 parser.add_argument('--epochs', type=int, default=100,
@@ -70,11 +73,14 @@ parser.add_argument('--pna_degrees', type=int, default=None)
 parser.add_argument('--equivstable_pe', action='store_true', default=False)
 parser.add_argument('--norm_type', type=str, default='layer')
 parser.add_argument('--JK', type=str, default='none')
+parser.add_argument('--equiformer', action='store_true', default=False)
+parser.add_argument("--radius", type=float, default=5.0)
+parser.add_argument("--max_num_neighbors", type=int, default=256)
 parser.add_argument('--dropout', type=float, default=0.0, help='drop out rate')
 parser.add_argument('--attn_dropout', type=float, default=0.0)
 parser.add_argument('--batch_norm', action='store_true', default=False)
 parser.add_argument('--layer_norm', action='store_true', default=False)
-parser.add_argument('--bigbird_cfg', default=None)
+parser.add_argument('--bigbird_cfg', action='store_true', default=False)
 parser.add_argument('--log_attn_weights', action='store_true', default=False)
 parser.add_argument('--max_length', type=int, default=512)
 parser.add_argument('--mask_prob', type=float, default=0.0)
@@ -121,13 +127,16 @@ def mkdir_p(path):
 device = torch.device("cuda")
 
 t1 = time.time()
+train_path = 'StructuredDatasets/train_dataset.pkl'
+test_path = 'StructuredDatasets/test2_dataset.pkl'
 # processed_path = f"data/{args.dataset}.pt"
 processed_path = f"data/{args.dataset}"
 if os.path.exists(processed_path):
     train_dataset = torch.load(processed_path + "_train.pt", map_location="cpu")
     test_dataset = torch.load(processed_path + "_test.pt", map_location="cpu")
 else:
-    train_data, test_data = load_pyg_data()
+    train_data = load_pygdata_3d(train_path)
+    test_data = load_pygdata_3d(test_path)
     train_dataset = DataListSet(train_data)
     test_dataset = DataListSet(test_data)
     torch.save(train_dataset, processed_path + "_train.pt")
@@ -145,7 +154,7 @@ loss_cls = nn.CrossEntropyLoss()
 score_fn_MAE = nn.L1Loss()
 score_fn_MSE = nn.MSELoss()
 
-record_path = str(args.dataset) + '/' + args.local_gnn_type + '+' + args.global_model_type + args.name + '/' \
+record_path = str(args.dataset) + '/' + args.local_gnn_type + '+' + args.global_model_type + (('_equiformer_radius' + str(args.radius) + '_neighbor_' + str(args.max_num_neighbors)) if args.equiformer else '_') + args.name + '/' \
               + 'hid_dim_' + str(args.hid_dim) + '_layers_' + str(args.num_layers) + "_regress_" + str(args.num_layers_regression) + '_cls_' + str(args.num_layers_cls) + '_head_' + str(args.num_heads) + '_pool_' + args.global_pool + '_' + args.act + '_max_length_' + str(args.max_length) \
               + '/mask_' + str(args.mask_prob) + '_lr_' + str(args.lr) + ('_cos-lr_' if args.cos_lr else '') + (('_Plateau_patience_' + str(args.patience) + '_factor_' + str(args.factor)) if not args.cos_lr else '') + 'decay_' + str(args.weight_decay) + \
               '_epochs_' + str(args.epochs) + '_bs_' + str(args.batch_size) + '_drop_' + str(args.dropout) + '_attn_' + str(args.attn_dropout) + '_bn_' + str(args.batch_norm) + '_ln_' + str(args.layer_norm) + '/no_' + str(args.no)
@@ -172,9 +181,12 @@ training_configurations = {
 
 
 def buildMod():
+    cfg.attention_type = "block_sparse"
+    cfg.block_size = 2
+    bigbird_cfg = None if not args.bigbird_cfg else cfg
     return GPSModel(args.hid_dim, args.out_dim, args.num_layers, args.num_layers_regression, args.num_layers_cls, args.global_pool, args.local_gnn_type,
                     args.global_model_type, args.num_heads, args.act, args.pna_degrees, args.equivstable_pe, args.dropout,
-                    args.attn_dropout, args.layer_norm, args.batch_norm, args.bigbird_cfg, args.log_attn_weights, args.max_length)
+                    args.attn_dropout, args.layer_norm, args.batch_norm, bigbird_cfg, args.log_attn_weights, args.max_length)
 
 
 def train(mod, opt: AdamW, dl):
@@ -279,7 +291,10 @@ for i in range(args.epochs):
         adjust_learning_rate(optimizer, i, args.cos_lr, training_configurations)
     t1 = time.time()
     # loss = train(model, optimizer, trn_dataloader)
-    loss_seq = train_cls(model, optimizer, trn_dataloader)
+    if args.mask_prob > 0:
+        loss_seq = train_cls(model, optimizer, trn_dataloader)
+    else:
+        loss_seq = 0
     loss_pred = train(model, optimizer, trn_dataloader)
     t2 = time.time()
     # print("train end", flush=True)
