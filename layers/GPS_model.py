@@ -10,6 +10,7 @@ from torch_geometric.graphgym.register import register_head
 from torch_geometric.nn.glob import global_add_pool, global_mean_pool, global_max_pool
 
 from layer.GPS_layer import GPSLayer
+from layer.GPS_equiformer_layer import GPS_equiformer_Layer
 from encoder.Encoder import Amino_Acid, Atom_encoder, Bond_encoder
 
 
@@ -114,14 +115,15 @@ class GPSModel(torch.nn.Module):
                  local_gnn_type, global_model_type, num_heads, act='relu',
                  pna_degrees=None, equivstable_pe=False, dropout=0.0,
                  attn_dropout=0.0, layer_norm=False, batch_norm=True,
-                 bigbird_cfg=None, log_attn_weights=False, max_length=512):
+                 bigbird_cfg=None, log_attn_weights=False, max_length=512,
+                 equiformer=False, radius=5.0, max_num_neighbors=256):
         super().__init__()
         self.acid_encoder = Amino_Acid(hid_dim)
         self.bond_encoder = Bond_encoder(hid_dim)
 
         layers = []
         for _ in range(num_layers):
-            layers.append(GPSLayer(
+            layers.append(GPS_equiformer_Layer(
                 dim_h=hid_dim,
                 local_gnn_type=local_gnn_type,
                 global_model_type=global_model_type,
@@ -135,7 +137,10 @@ class GPSModel(torch.nn.Module):
                 batch_norm=batch_norm,
                 bigbird_cfg=bigbird_cfg,
                 log_attn_weights=log_attn_weights,
-                max_length=max_length if _ == 0 else None
+                max_length=max_length if _ == 0 else None,
+                equiformer=equiformer,
+                max_num_neighbors=max_num_neighbors,
+                radius=radius
             ))
         self.layers = torch.nn.Sequential(*layers)
 
