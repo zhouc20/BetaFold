@@ -9,6 +9,7 @@ from typing import Tuple
 from torch_sparse import SparseTensor
 from torch_geometric.data import Data as PygData
 import os
+from tqdm import tqdm
 import pandas as pd
 import pickle
 from .torsion_angle_tool import side_chain_torsion_angles
@@ -183,25 +184,28 @@ def load_pygdata_3d(path):
     zs = [v['z'] for v in structures]
     residue_names = [v['residue_name'] for v in structures]
     data_list = []
-    for i in range(len(Tms)):
-        seq = torch.tensor(list(map(one_hot_acid, sequences[i])), dtype=torch.long)
-        js = [k for k, name in enumerate(atom_names[i]) if name == 'CA']
-        x = torch.tensor([xs[i][j] for j in js], dtype=torch.float32)
-        y = torch.tensor([ys[i][j] for j in js], dtype=torch.float32)
-        z = torch.tensor([zs[i][j] for j in js], dtype=torch.float32)
-        pos = torch.stack([x, y, z], dim=-1)
-        edge_index_0 = torch.arange(0, seq.shape[0], dtype=torch.long).unsqueeze(1).repeat(1, 2).reshape(-1)
-        edge_index_1 = torch.arange(0, seq.shape[0], dtype=torch.long).unsqueeze(1).repeat(1, 2).reshape(-1)
-        edge_index_1[torch.arange(0, seq.shape[0] * 2, 2)] -= 1
-        edge_index_1[torch.arange(1, seq.shape[0] * 2, 2)] += 1
-        edge_index = torch.cat([edge_index_0[1: -1].unsqueeze(0), edge_index_1[1: -1].unsqueeze(0)], dim=0)
-        edge_attr = torch.ones([edge_index.shape[1]], dtype=torch.long)
-        torsion_angle = side_chain_torsion_angles(sequences[i], structures[i], pad=-1.0)
-        data_3d = PygData(x=seq, edge_index=edge_index, edge_attr=edge_attr,
-                       y=torch.tensor([Tms[i]], dtype=torch.float), pos=pos,
-                       len_seq=torch.tensor((seq.shape[0]), dtype=torch.long),
-                          torsion_angle=torsion_angle)
-        data_list.append(data_3d)
+    
+    with tqdm(desc=f'preprocess...', total=len(Tms), unit='proteins') as pbar:
+        for i in range(len(Tms)):
+            seq = torch.tensor(list(map(one_hot_acid, sequences[i])), dtype=torch.long)
+            js = [k for k, name in enumerate(atom_names[i]) if name == 'CA']
+            x = torch.tensor([xs[i][j] for j in js], dtype=torch.float32)
+            y = torch.tensor([ys[i][j] for j in js], dtype=torch.float32)
+            z = torch.tensor([zs[i][j] for j in js], dtype=torch.float32)
+            pos = torch.stack([x, y, z], dim=-1)
+            edge_index_0 = torch.arange(0, seq.shape[0], dtype=torch.long).unsqueeze(1).repeat(1, 2).reshape(-1)
+            edge_index_1 = torch.arange(0, seq.shape[0], dtype=torch.long).unsqueeze(1).repeat(1, 2).reshape(-1)
+            edge_index_1[torch.arange(0, seq.shape[0] * 2, 2)] -= 1
+            edge_index_1[torch.arange(1, seq.shape[0] * 2, 2)] += 1
+            edge_index = torch.cat([edge_index_0[1: -1].unsqueeze(0), edge_index_1[1: -1].unsqueeze(0)], dim=0)
+            edge_attr = torch.ones([edge_index.shape[1]], dtype=torch.long)
+            torsion_angle = side_chain_torsion_angles(sequences[i], structures[i], pad=-1.0)
+            data_3d = PygData(x=seq, edge_index=edge_index, edge_attr=edge_attr,
+                        y=torch.tensor([Tms[i]], dtype=torch.float), pos=pos,
+                        len_seq=torch.tensor((seq.shape[0]), dtype=torch.long),
+                            torsion_angle=torsion_angle)
+            data_list.append(data_3d)
+            pbar.update(1)
     return data_list
 
 
